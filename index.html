@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Football Momentum Video Maker</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#0b0b10;--p:#15151d;--l:#2a2a36;--t:#e8e8ee;--m:#8b8b9c;--a:#f5c518}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:14px Figtree,system-ui,sans-serif;display:flex;min-height:100vh;gap:16px;padding:16px}
+#prev{flex:0 0 auto;display:flex;flex-direction:column;gap:10px;align-items:center}
+canvas{height:calc(100vh - 110px);aspect-ratio:9/16;background:#05050a;border-radius:10px;border:1px solid var(--l)}
+#side{flex:1;min-width:300px;max-width:560px;background:var(--p);border:1px solid var(--l);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;max-height:calc(100vh - 32px)}
+h1{font-size:17px;margin:0}h2{font-size:12px;margin:6px 0 0;color:var(--m);text-transform:uppercase;letter-spacing:.08em}
+button,input,textarea{font:inherit;color:var(--t);background:#1e1e28;border:1px solid var(--l);border-radius:8px;padding:7px 10px}
+button{cursor:pointer}button.pri{background:var(--a);color:#111;border-color:var(--a);font-weight:700}button:disabled{opacity:.5}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>input[type=text],.row>input:not([type]){flex:1;min-width:110px}
+textarea{width:100%;height:230px;font:12px ui-monospace,monospace;resize:vertical}small{color:var(--m)}
+#bar{width:100%}
+</style></head><body>
+<div id="prev"><canvas id="cv"></canvas>
+<div class="row" style="width:100%"><button id="play">Play</button><input id="bar" type="range" min="0" max="1000" value="0" style="flex:1;padding:0"><span id="tl"><small>0:00</small></span></div></div>
+<div id="side">
+<h1>Football Momentum Video Maker</h1>
+<div class="row"><button class="pri" id="rec">Render &amp; download video</button><small id="st"></small></div>
+<h2>Club pictures</h2>
+<div class="row"><label>Home crest <input type="file" id="lh" accept="image/*"></label></div>
+<div class="row"><label>Away crest <input type="file" id="la" accept="image/*"></label></div>
+<h2>Your branding (bottom bar)</h2>
+<div class="row"><input id="brand" placeholder="Brand name"><input id="handle" placeholder="@handle"></div>
+<div class="row"><label>Video length (s) <input id="dur" type="number" min="10" max="120" value="45" style="width:80px"></label></div>
+<h2>Match data (JSON)</h2>
+<small>Edit and press Apply. <b>momentum</b> = 91 numbers (minute 0–90), −1 to +1: positive = home pressure, negative = away. Shots: team "h"/"a", xg, goal, ot (on target), scorer, assist. Optional u,v (0–1) place a shot on the pitch.</small>
+<textarea id="js" spellcheck="false"></textarea>
+<div class="row"><button id="apply">Apply data</button><button id="reset">Reset to demo</button></div>
+<small>Everything renders in your browser. MP4 export works in recent Chrome/Edge; otherwise you get WebM (convert with any free converter).</small>
+</div>
+<script>
+const $=i=>document.getElementById(i),cv=$('cv'),g=cv.getContext('2d');
+const W=1080,H=1920,CY=420,NU=44,NV=28,SZ=4.2;cv.width=W;cv.height=H;
+let cfg,D=45,T=0,playing=false,last=0,recording=false,sm=[],logos={h:null,a:null};
+const rng=s=>()=>(s=(s*1664525+1013904223)>>>0)/4294967296;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),lerp=(a,b,t)=>a+(b-a)*t;
+
+function demo(){const r=rng(11);
+ const G=[[20,'h','M. de Roon','M. Soulé'],[25,'a','K. Mbappé','Y. Diomande'],[51,'h','D. Malen','R. Mora'],[57,'h','D. Malen','M. Soulé'],[83,'a','C. Espi',''],[85,'a','Endrick','A. Güler'],[90,'a','','']];
+ const shots=G.map(x=>({min:x[0],team:x[1],xg:+(.28+r()*.3).toFixed(2),ot:true,goal:true,scorer:x[2],assist:x[3]}));
+ let nh=11,na=12;while(nh||na){const t=nh&&(!na||r()<.5)?'h':'a';t=='h'?nh--:na--;shots.push({min:1+Math.floor(r()*89),team:t,xg:+(.03+r()*.2).toFixed(2),ot:r()<.5})}
+ shots.sort((a,b)=>a.min-b.min);
+ const mom=[];for(let i=0;i<=90;i++){let v=Math.sin(i/7)*.12+(r()-.5)*.12;shots.forEach(s=>v+=(s.team=='h'?1:-1)*s.xg*2.2*Math.exp(-(((i-s.min+2)/6)**2)));mom.push(+clamp(v,-1,1).toFixed(2))}
+ return{title:'UEFA Champions League',sub:'Match Day 2',date:'14 Oct',
+  home:{short:'ROM',color:'#b8372f'},away:{short:'RMA',color:'#eef0f4'},brand:'YOUR BRAND',handle:'@yourhandle',duration:45,
+  cards:[{min:62,team:'a'},{min:71,team:'a'},{min:80,team:'h'},{min:88,team:'a'}],shots,momentum:mom}}
+
+function load(c){cfg=c;D=+c.duration||45;
+ sm=c.momentum.map((_,i,a)=>{let s=0,n=0;for(let k=-2;k<=2;k++){const v=a[i+k];if(v!=null){s+=v;n++}}return s/n});
+ cfg.shots.forEach((s,i)=>{const r=rng(i*97+5);if(s.u==null)s.u=s.team=='h'?.84+.13*r():.03+.13*r();if(s.v==null)s.v=.25+.5*r()});
+ $('js').value=JSON.stringify(c).replace(/\},\{/g,'},\n{').replace(/"momentum":/,'\n"momentum":');
+ $('brand').value=c.brand||'';$('handle').value=c.handle||'';$('dur').value=D;draw(T)}
+
+const hexRGB=h=>{h=h.replace('#','');return[0,2,4].map(i=>parseInt(h.substr(i,2),16))};
+const mom=m=>{const i=clamp(m,0,sm.length-1),a=Math.floor(i),b=Math.min(a+1,sm.length-1);return lerp(sm[a],sm[b],i-a)};
+function P(u,v,z){const s=5;return[540+((u-.5)*105+(v-.5)*68)*.87*s,CY+500+(-(u-.5)*105+(v-.5)*68)*.5*s-z*SZ]}
+const order=[];for(let i=0;i<NU;i++)for(let j=0;j<NV;j++)order.push([i,j]);order.sort((a,b)=>(b[0]-b[1])-(a[0]-a[1])||a[0]-b[0]);
+
+function env(s,m,fin){const a=m-s.min;let e=a<0?0:a<1.2?a/1.2:Math.exp(-(a-1.2)/(s.goal?9:4));return Math.max(e,fin)*(fin>0||e>.02?1:0)}
+function surface(m,fin){const Z=[],front=.5+.42*mom(m),mi=Math.abs(mom(m));
+ const sp=cfg.shots.map(s=>({s,e:env(s,m,fin),a:s.xg*115}));
+ for(let i=0;i<=NU;i++){Z[i]=[];for(let j=0;j<=NV;j++){const u=i/NU,v=j/NV;
+  let z=2.4*Math.sin(u*10+m*.4)*Math.cos(v*6+m*.1)+8*Math.exp(-(((u-front)/.17)**2))*(.35+mi);
+  for(const k of sp){if(k.e<.02)continue;const du=u-k.s.u,dv=v-k.s.v;z+=k.a*k.e*Math.exp(-(du*du/.0009+dv*dv/.004))}
+  Z[i][j]=z}}
+ return{Z,front,sp}}
+const zAt=(Z,u,v)=>{const x=clamp(u,0,1)*NU,y=clamp(v,0,1)*NV,i=Math.min(Math.floor(x),NU-1),j=Math.min(Math.floor(y),NV-1),fx=x-i,fy=y-j;
+ return lerp(lerp(Z[i][j],Z[i+1][j],fx),lerp(Z[i][j+1],Z[i+1][j+1],fx),fy)};
+
+function lines(){const L=[],R=(x0,y0,x1,y1)=>L.push([[x0,y0],[x1,y0],[x1,y1],[x0,y1],[x0,y0]]);
+ R(0,0,105,68);L.push([[52.5,0],[52.5,68]]);R(0,13.85,16.5,54.15);R(88.5,13.85,105,54.15);R(0,24.85,5.5,43.15);R(99.5,24.85,105,43.15);
+ const c=[];for(let a=0;a<=32;a++)c.push([52.5+9.15*Math.cos(a/32*6.283),34+9.15*Math.sin(a/32*6.283)]);L.push(c);return L}
+const LN=lines();
+
+function txt(s,x,y,f,c,al='left'){g.font=f;g.fillStyle=c;g.textAlign=al;g.fillText(s,x,y)}
+function crest(k,x,y,sz){const im=logos[k],t=cfg[k=='h'?'home':'away'];
+ if(im){const r=Math.min(sz/im.width,sz/im.height);g.drawImage(im,x+(sz-im.width*r)/2,y+(sz-im.height*r)/2,im.width*r,im.height*r)}
+ else{g.fillStyle=t.color;g.beginPath();g.arc(x+sz/2,y+sz/2,sz/2,0,7);g.fill()}}
+
+function draw(t){
+ const fin=clamp((t-(D-3))/1.2,0,1),m=clamp(t/(D-3),0,1)*90,isFT=t>=D-3;
+ g.fillStyle='#05050a';g.fillRect(0,0,W,H);
+ const bg=g.createRadialGradient(540,CY+420,100,540,CY+540,800);bg.addColorStop(0,'#14141c');bg.addColorStop(1,'#09090d');
+ g.fillStyle=bg;g.fillRect(0,CY,W,1080);
+ const hc=hexRGB(cfg.home.color),ac=hexRGB(cfg.away.color);
+ // goal flash
+ let banner=null;cfg.shots.forEach(s=>{if(!s.goal)return;const tg=s.min/90*(D-3),a=t-tg;if(a>=0&&a<2.4&&!isFT)banner={s,a}});
+ if(banner){const c=hexRGB(banner.s.team=='h'?cfg.home.color:cfg.away.color);g.fillStyle=`rgba(${c},${.13*Math.max(0,1-banner.a/1.2)})`;g.fillRect(0,CY,W,1080)}
+ const{Z,front,sp}=surface(m,fin);
+ // shadow plane
+ g.fillStyle='rgba(0,0,0,.65)';g.beginPath();[[0,0],[1,0],[1,1],[0,1]].forEach(([u,v],k)=>{const p=P(u,v,-16);k?g.lineTo(...p):g.moveTo(...p)});g.fill();
+ const V=[];for(let i=0;i<=NU;i++){V[i]=[];for(let j=0;j<=NV;j++)V[i][j]=P(i/NU,j/NV,Z[i][j])}
+ for(const[i,j]of order){const u=(i+.5)/NU,k=1/(1+Math.exp(-(front-u)*20)),c=[0,1,2].map(n=>lerp(ac[n],hc[n],k));
+  const sh=clamp(.84+(Z[i][j]-Z[i+1][j])*.035+(Z[i][j]-Z[i][j+1])*.012,.55,1.12),col=`rgb(${c.map(x=>clamp(x*sh,0,255)|0)})`;
+  g.fillStyle=col;g.strokeStyle=col;g.lineWidth=1;g.beginPath();g.moveTo(...V[i][j]);g.lineTo(...V[i+1][j]);g.lineTo(...V[i+1][j+1]);g.lineTo(...V[i][j+1]);g.closePath();g.fill();g.stroke()}
+ g.strokeStyle='rgba(255,255,255,.65)';g.lineWidth=2;
+ for(const l of LN){g.beginPath();l.forEach(([x,y],k)=>{const p=P(x/105,y/68,zAt(Z,x/105,y/68)+.3);k?g.lineTo(...p):g.moveTo(...p)});g.stroke()}
+ // goal rings
+ g.strokeStyle='#f5c518';g.lineWidth=3.5;
+ for(const k of sp){if(!k.s.goal||k.e<.3)continue;const p=P(k.s.u,k.s.v,k.a*k.e+2);g.globalAlpha=clamp(k.e*1.5,0,1);g.beginPath();g.arc(p[0],p[1]-8,10,0,7);g.stroke();g.globalAlpha=1}
+ // header
+ const sc={h:0,a:0},gl={h:[],a:[]};cfg.shots.forEach(s=>{if(s.goal&&s.min<=Math.round(m)+(isFT?1:0)){sc[s.team]++;gl[s.team].push(s.min)}});
+ crest('h',130,CY+38,64);crest('a',300,CY+38,64);
+ txt(cfg.home.short,50,CY+80,'700 28px Figtree','#fff');txt(cfg.away.short,222,CY+80,'700 28px Figtree','#fff');
+ txt(sc.h,48,CY+190,'110px Anton','#fff');txt(sc.a,222,CY+190,'110px Anton','#fff');
+ [['h',50,cfg.home.color],['a',222,'#fff']].forEach(([k,x,c])=>gl[k].forEach((mn,i)=>{const px=x+(i%2)*92,py=CY+235+Math.floor(i/2)*34;g.fillStyle=c;g.beginPath();g.arc(px+6,py-8,5,0,7);g.fill();txt(mn+"'",px+20,py,'600 26px Figtree','#fff')}));
+ txt(cfg.title,540,CY+66,'700 26px Figtree','#fff','center');txt(cfg.sub,540,CY+98,'400 22px Figtree','#b9b9c6','center');txt(cfg.date,540,CY+126,'400 22px Figtree','#b9b9c6','center');
+ txt(isFT?'FT':Math.min(90,Math.round(m))+"'",1020,CY+120,'92px Anton','#fff','right');
+ txt(isFT?'Full Time':m<45?'1st Half':'2nd Half',1020,CY+156,'600 22px Figtree','#c9c9d4','right');
+ g.fillStyle='#3a3a46';g.fillRect(900,CY+170,120,4);g.fillStyle='#f5c518';g.fillRect(m<45?900:960,CY+170,isFT?120:(m<45?m/45*60:(m-45)/45*60)+(m<45?0:0),4);
+ if(isFT)g.fillRect(900,CY+170,120,4);
+ // legend / banner / shots in last 10
+ if(isFT){txt('▲▲▲  Taller spike → higher xG',1020,CY+660,'600 20px Figtree','#c9c9d4','right');g.strokeStyle='#f5c518';g.lineWidth=3;g.beginPath();g.arc(1000,CY+695,9,0,7);g.stroke();txt('Goal',980,CY+702,'600 20px Figtree','#c9c9d4','right')}
+ const n10=cfg.shots.filter(s=>s.min<=m&&s.min>m-10).length;
+ if(!isFT&&n10>=3)txt(n10+' SHOTS IN THE LAST 10 MINUTES',1020,CY+782,'700 17px Figtree',n10>=5?'#ff5b4d':'#e8e8ee','right');
+ if(banner){const a=banner.a,al=a<.3?a/.3:a>2?(2.4-a)/.4:1,s=banner.s;g.globalAlpha=clamp(al,0,1);
+  txt('Goal',1020,CY+668,'600 18px Figtree','#9a9aa8','right');txt(s.scorer||'Goal',1020,CY+712,'44px Anton','#fff','right');if(s.assist)txt('Assist · '+s.assist,1020,CY+745,'400 20px Figtree','#9a9aa8','right');g.globalAlpha=1}
+ // stats at FT
+ const ax=CY+880;
+ if(isFT&&fin>.5){const st=k=>{const a=cfg.shots.filter(s=>s.team==k);return[a.length,a.filter(s=>s.ot||s.goal).length,a.reduce((x,s)=>x+s.xg,0)]};
+  const h=st('h'),a=st('a');g.globalAlpha=clamp((fin-.5)*2,0,1);
+  [['Shots',h[0],a[0],270],['On target',h[1],a[1],540],['xG',h[2].toFixed(2),a[2].toFixed(2),810]].forEach(([l,x,y,cx])=>{txt(l,cx,CY+772,'400 20px Figtree','#c9c9d4','center');txt(String(x),cx-12,CY+815,'700 32px Figtree',cfg.home.color,'right');txt('–',cx,CY+815,'400 28px Figtree','#888','center');txt(String(y),cx+12,CY+815,'700 32px Figtree','#fff')});g.globalAlpha=1}
+ // pressure chart
+ txt('ATTACKING PRESSURE',60,CY+850,'600 16px Figtree','#9a9aa8');
+ const X=i=>60+960*i/90,Y0=CY+910,A=48;
+ g.strokeStyle='#3a3a46';g.lineWidth=1.5;g.beginPath();g.moveTo(60,Y0);g.lineTo(1020,Y0);g.stroke();g.beginPath();g.moveTo(X(45),Y0-A);g.lineTo(X(45),Y0+A);g.stroke();
+ const mm=Math.min(90,m),pts=[];for(let i=0;i<=Math.floor(mm);i++)pts.push([i,sm[i]]);if(mm>Math.floor(mm))pts.push([mm,mom(mm)]);
+ [[1,cfg.home.color],[-1,'#dfe3ea']].forEach(([sg,c])=>{g.fillStyle=c;g.globalAlpha=.9;g.beginPath();g.moveTo(X(0),Y0);pts.forEach(([i,v])=>g.lineTo(X(i),Y0-(sg>0?Math.max(v,0):Math.min(v,0))*A));g.lineTo(X(mm),Y0);g.fill();g.globalAlpha=1});
+ g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();pts.forEach(([i,v],k)=>k?g.lineTo(X(i),Y0-v*A):g.moveTo(X(i),Y0-v*A));g.globalAlpha=.7;g.stroke();g.globalAlpha=1;
+ g.strokeStyle='#fff';g.lineWidth=2.5;g.beginPath();g.moveTo(X(mm),Y0-A);g.lineTo(X(mm),Y0+A);g.stroke();
+ cfg.shots.forEach(s=>{if(!s.goal||s.min>m)return;const x=X(s.min),y=Y0+A+14;g.strokeStyle=s.team=='h'?cfg.home.color:'#fff';g.lineWidth=2;g.beginPath();g.arc(x,y,8,0,7);g.stroke();g.fillStyle=s.team=='h'?cfg.home.color:'#fff';g.globalAlpha=.3;g.fill();g.globalAlpha=1});
+ (cfg.cards||[]).forEach(c=>{if(c.min>m)return;g.fillStyle='#f5c518';g.fillRect(X(c.min)-5,Y0+A+30,10,13)});
+ txt("1'",60,CY+1006,'400 15px Figtree','#9a9aa8');txt('Half-time',X(45),CY+1006,'400 15px Figtree','#9a9aa8','center');txt('Full-time',1020,CY+1006,'400 15px Figtree','#9a9aa8','right');
+ // footer (your brand)
+ g.strokeStyle='#f5c518';g.lineWidth=3;g.strokeRect(62,CY+1026,22,22);g.fillStyle='#f5c518';g.fillRect(69,CY+1039,8,8);
+ txt((cfg.brand||'').toUpperCase(),104,CY+1045,'700 18px Figtree','#f5c518');txt(cfg.handle||'',1020,CY+1046,'700 22px Figtree','#fff','right');
+ const w=Math.max(0,D-t);$('tl').innerHTML='<small>'+t.toFixed(1)+' / '+D+'s</small>';$('bar').value=t/D*1000}
+
+function loop(ts){if(playing){T+=(ts-last)/1000;if(T>=D){if(recording){stopRec();return}T=0}draw(T)}last=ts;requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play'};
+$('bar').oninput=e=>{T=e.target.value/1000*D;draw(T)};
+$('apply').onclick=()=>{try{load(JSON.parse($('js').value));$('st').textContent='Applied'}catch(e){$('st').textContent='JSON error: '+e.message}};
+$('reset').onclick=()=>load(demo());
+['brand','handle'].forEach(k=>$(k).oninput=e=>{cfg[k]=e.target.value;draw(T)});
+$('dur').onchange=e=>{cfg.duration=+e.target.value;D=cfg.duration;draw(T)};
+[['lh','h'],['la','a']].forEach(([id,k])=>$(id).onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{logos[k]=im;draw(T)};im.src=URL.createObjectURL(f)});
+
+let mr,chunks=[],mime='';
+function startRec(){const types=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm'];
+ mime=types.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t));if(!mime){$('st').textContent='Recording not supported in this browser';return}
+ chunks=[];mr=new MediaRecorder(cv.captureStream(30),{mimeType:mime,videoBitsPerSecond:10e6});mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+ mr.onstop=()=>{const b=new Blob(chunks,{type:mime}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='match-momentum.'+(mime.includes('mp4')?'mp4':'webm');a.click();$('st').textContent='Saved '+a.download;$('rec').disabled=false};
+ T=0;recording=true;playing=true;$('rec').disabled=true;$('st').textContent='Recording in real time…';mr.start()}
+function stopRec(){recording=false;playing=false;T=D;draw(D);mr.stop();$('play').textContent='Play'}
+$('rec').onclick=startRec;
+document.fonts.load('100px Anton').then(()=>document.fonts.load('700 20px Figtree')).finally(()=>load(demo()));
+</script></body></html>
