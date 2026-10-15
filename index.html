@@ -12,25 +12,37 @@ h1{font-size:17px;margin:0}h2{font-size:12px;margin:6px 0 0;color:var(--m);text-
 button,input,textarea{font:inherit;color:var(--t);background:#1e1e28;border:1px solid var(--l);border-radius:8px;padding:7px 10px}
 button{cursor:pointer}button.pri{background:var(--a);color:#111;border-color:var(--a);font-weight:700}button:disabled{opacity:.5}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>input[type=text],.row>input:not([type]){flex:1;min-width:110px}
-textarea{width:100%;height:230px;font:12px ui-monospace,monospace;resize:vertical}small{color:var(--m)}
-#bar{width:100%}
+textarea{flex:none;width:100%;height:84px;font:12px ui-monospace,monospace;resize:vertical}small{color:var(--m)}
+#bar{width:100%}label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--m)}label input{width:100%}input[type=color]{padding:0;height:34px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}summary{cursor:pointer;color:var(--m)}
 </style></head><body>
 <div id="prev"><canvas id="cv"></canvas>
 <div class="row" style="width:100%"><button id="play">Play</button><input id="bar" type="range" min="0" max="1000" value="0" style="flex:1;padding:0"><span id="tl"><small>0:00</small></span></div></div>
 <div id="side">
 <h1>Football Momentum Video Maker</h1>
 <div class="row"><button class="pri" id="rec">Render &amp; download video</button><small id="st"></small></div>
-<h2>Club pictures</h2>
-<div class="row"><label>Home crest <input type="file" id="lh" accept="image/*"></label></div>
-<div class="row"><label>Away crest <input type="file" id="la" accept="image/*"></label></div>
-<h2>Your branding (bottom bar)</h2>
-<div class="row"><input id="brand" placeholder="Brand name"><input id="handle" placeholder="@handle"></div>
-<div class="row"><label>Video length (s) <input id="dur" type="number" min="10" max="120" value="45" style="width:80px"></label></div>
-<h2>Match data (JSON)</h2>
-<small>Edit and press Apply. <b>momentum</b> = 91 numbers (minute 0–90), −1 to +1: positive = home pressure, negative = away. Shots: team "h"/"a", xg, goal, ot (on target), scorer, assist. Optional u,v (0–1) place a shot on the pitch.</small>
-<textarea id="js" spellcheck="false"></textarea>
-<div class="row"><button id="apply">Apply data</button><button id="reset">Reset to demo</button></div>
-<small>Everything renders in your browser. MP4 export works in recent Chrome/Edge; otherwise you get WebM (convert with any free converter).</small>
+<h2>1 · Teams</h2>
+<div class="g2"><label>Home code<input id="hs" maxlength="4"></label><label>Away code<input id="as" maxlength="4"></label>
+<label>Home colour<input id="hcol" type="color"></label><label>Away colour<input id="acol" type="color"></label>
+<label>Home club picture<input type="file" id="lh" accept="image/*"></label><label>Away club picture<input type="file" id="la" accept="image/*"></label></div>
+<h2>2 · Match info</h2>
+<div class="g2"><label>Competition<input id="title"></label><label>Round<input id="sub"></label><label>Date<input id="date"></label><label>Video length (seconds)<input id="dur" type="number" min="10" max="120"></label></div>
+<h2>3 · Momentum chart</h2>
+<label>Upload your chart screenshot (green bars above = home, blue below = away)<input type="file" id="chart" accept="image/*"></label><small id="cs">Demo momentum is loaded until you upload yours.</small>
+<h2>4 · Goals</h2>
+<small>One per line: minute, H or A, scorer, assist (scorer and assist optional)</small>
+<textarea id="goals" placeholder="20, H, M. de Roon, M. Soulé"></textarea>
+<h2>5 · Cards (optional)</h2>
+<small>One per line: minute, H or A</small>
+<textarea id="cards" placeholder="62, A"></textarea>
+<h2>6 · Final stats (optional)</h2>
+<div class="g2"><label>Shots – home<input id="sh" type="number"></label><label>Shots – away<input id="sa" type="number"></label>
+<label>On target – home<input id="oh" type="number"></label><label>On target – away<input id="oa" type="number"></label>
+<label>xG – home<input id="xh" type="number" step="0.01"></label><label>xG – away<input id="xa" type="number" step="0.01"></label></div>
+<h2>7 · Your branding</h2>
+<div class="g2"><label>Brand name<input id="brand"></label><label>Handle<input id="handle"></label></div>
+<div class="row"><button id="reset">Reset to demo</button></div>
+<details><summary>Advanced: raw JSON data</summary><textarea id="js" spellcheck="false" style="height:200px"></textarea><button id="apply">Apply JSON</button></details>
+<small>Everything runs in your browser. MP4 export works in recent Chrome/Edge; otherwise you get WebM.</small>
 </div>
 <script>
 const $=i=>document.getElementById(i),cv=$('cv'),g=cv.getContext('2d');
@@ -49,11 +61,40 @@ function demo(){const r=rng(11);
   home:{short:'ROM',color:'#b8372f'},away:{short:'RMA',color:'#eef0f4'},brand:'YOUR BRAND',handle:'@yourhandle',duration:45,
   cards:[{min:62,team:'a'},{min:71,team:'a'},{min:80,team:'h'},{min:88,team:'a'}],shots,momentum:mom}}
 
-function load(c){cfg=c;D=+c.duration||45;
+let MOM=[],tm;
+const V=id=>$(id).value.trim(),num=id=>V(id)===''?null:+V(id);
+function apply(c){cfg=c;D=+c.duration||45;
  sm=c.momentum.map((_,i,a)=>{let s=0,n=0;for(let k=-2;k<=2;k++){const v=a[i+k];if(v!=null){s+=v;n++}}return s/n});
  cfg.shots.forEach((s,i)=>{const r=rng(i*97+5);if(s.u==null)s.u=s.team=='h'?.84+.13*r():.03+.13*r();if(s.v==null)s.v=.25+.5*r()});
- $('js').value=JSON.stringify(c).replace(/\},\{/g,'},\n{').replace(/"momentum":/,'\n"momentum":');
- $('brand').value=c.brand||'';$('handle').value=c.handle||'';$('dur').value=D;draw(T)}
+ $('js').value=JSON.stringify(c).replace(/\},\{/g,'},\n{').replace(/"momentum":/,'\n"momentum":');draw(T)}
+function setForm(c){[['hs',c.home.short],['as',c.away.short],['hcol',c.home.color],['acol',c.away.color],['title',c.title],['sub',c.sub],['date',c.date],['dur',c.duration||45],['brand',c.brand],['handle',c.handle]].forEach(([i,v])=>$(i).value=v||'');
+ $('goals').value=c.shots.filter(s=>s.goal).map(s=>[s.min,s.team.toUpperCase(),s.scorer||'',s.assist||''].join(', ').replace(/(, )+$/,'')).join('\n');
+ $('cards').value=(c.cards||[]).map(k=>k.min+', '+k.team.toUpperCase()).join('\n');
+ const S=k=>{const a=c.shots.filter(s=>s.team==k),o=c.stats&&c.stats[k]||[];return[o[0]??a.length,o[1]??a.filter(s=>s.ot||s.goal).length,o[2]??+a.reduce((x,s)=>x+s.xg,0).toFixed(2)]};
+ const h=S('h'),a=S('a');[['sh',h[0]],['oh',h[1]],['xh',h[2]],['sa',a[0]],['oa',a[1]],['xa',a[2]]].forEach(([i,v])=>$(i).value=v)}
+function build(){const L=id=>V(id).split('\n').map(l=>l.split(',').map(x=>x.trim())).filter(a=>a[0]&&!isNaN(a[0])),T2=s=>/^a/i.test(s)?'a':'h';
+ const goals=L('goals').map(a=>({min:+a[0],team:T2(a[1]),xg:.35,ot:true,goal:true,scorer:a[2]||'',assist:a[3]||''})),cards=L('cards').map(a=>({min:+a[0],team:T2(a[1])}));
+ const r=rng(3),shots=goals.slice();
+ [['h','sh','oh','xh'],['a','sa','oa','xa']].forEach(([k,s,o,x])=>{const gl=goals.filter(q=>q.team==k),n=(num(s)??gl.length)-gl.length,xt=num(x),each=xt!=null&&n>0?Math.max(.02,(xt-gl.length*.35)/n):.1,on=num(o);
+  for(let i=0;i<n;i++)shots.push({min:1+Math.floor(r()*89),team:k,xg:+Math.max(.02,each*(.6+.8*r())).toFixed(2),ot:on==null?r()<.5:i<Math.max(0,on-gl.length)})});
+ shots.sort((a,b)=>a.min-b.min);
+ return{title:V('title'),sub:V('sub'),date:V('date'),home:{short:V('hs'),color:$('hcol').value},away:{short:V('as'),color:$('acol').value},brand:V('brand'),handle:V('handle'),duration:num('dur')||45,cards,shots,momentum:MOM,stats:{h:[num('sh'),num('oh'),num('xh')],a:[num('sa'),num('oa'),num('xa')]}}}
+function load(c){MOM=c.momentum.slice();setForm(c);apply(c)}
+function readChart(im){const c=document.createElement('canvas'),w=c.width=im.width,h=c.height=im.height,x=c.getContext('2d');x.drawImage(im,0,0);const d=x.getImageData(0,0,w,h).data,px=(i,j)=>{const o=(j*w+i)*4;return[d[o],d[o+1],d[o+2]]};
+ const isG=(i,j)=>{const[r,g,b]=px(i,j);return g>110&&g>r*1.4&&g>b*1.4},isB=(i,j)=>{const[r,g,b]=px(i,j);return b>130&&b>g*1.35&&r<b*.85};
+ const cnt={};for(let i=0;i<w;i++){let l=-1;for(let j=0;j<h;j++)if(isG(i,j))l=j;if(l>=0)cnt[l]=(cnt[l]||0)+1}
+ const best=Object.keys(cnt).sort((a,b)=>(cnt[+b]+(cnt[b-1]||0)+(cnt[+b+1]||0))-(cnt[+a]+(cnt[a-1]||0)+(cnt[+a+1]||0)))[0];if(best==null)throw Error('no green bars found');
+ const y0=+best+1,run=(f,i,dir)=>{let n=0,m=0;for(let j=y0+(dir<0?-1:0);j>=0&&j<h;j+=dir){if(f(i,j)){n+=m+1;m=0}else if(++m>2)break}return n};
+ const gh=[],bh=[];for(let i=0;i<w;i++){gh[i]=run(isG,i,-1);bh[i]=run(isB,i,1)}
+ const yr=y0-2,bg=i=>{const[r,g,b]=px(i,yr);return g>r+8&&g>b+4};let xl=0,xr=w-1;while(xl<w&&!bg(xl))xl++;while(xr>0&&!bg(xr))xr--;
+ const dk=[];for(let i=xl+(xr-xl)*.3|0;i<xl+(xr-xl)*.7;i++){const q=px(i,yr);if(q[0]+q[1]+q[2]<70)dk.push(i)}
+ const xm=dk.length?dk.reduce((a,b)=>a+b)/dk.length:(xl+xr)/2,raw=[0];
+ [[xl,xm-2],[xm+2,xr+1]].forEach(([a,b])=>{for(let k=0;k<45;k++){const s=a+(b-a)*k/45,e=a+(b-a)*(k+1)/45;let g2=0,b2=0;for(let i=Math.floor(s);i<Math.max(Math.ceil(e),Math.floor(s)+1);i++){g2=Math.max(g2,gh[i]||0);b2=Math.max(b2,bh[i]||0)}raw.push(g2>=b2?g2:-b2)}});
+ const mx=Math.max(...raw.map(Math.abs));if(!mx)throw Error('no bars found');return raw.map(v=>+(v/mx).toFixed(2))}
+$('chart').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{try{MOM=readChart(im);$('cs').textContent='Chart read ✓ – check the pressure strip in the preview matches your picture.';apply(build())}catch(err){$('cs').textContent='Could not read this chart: '+err.message}};im.src=URL.createObjectURL(f)};
+$('side').addEventListener('input',e=>{if(e.target.id=='js'||e.target.type=='file')return;clearTimeout(tm);tm=setTimeout(()=>apply(build()),250)});
+$('apply').onclick=()=>{try{load(JSON.parse($('js').value));$('st').textContent='Applied'}catch(e){$('st').textContent='JSON error: '+e.message}};
+$('reset').onclick=()=>load(demo());
 
 const hexRGB=h=>{h=h.replace('#','');return[0,2,4].map(i=>parseInt(h.substr(i,2),16))};
 const mom=m=>{const i=clamp(m,0,sm.length-1),a=Math.floor(i),b=Math.min(a+1,sm.length-1);return lerp(sm[a],sm[b],i-a)};
@@ -122,7 +163,7 @@ function draw(t){
  // stats at FT
  const ax=CY+880;
  if(isFT&&fin>.5){const st=k=>{const a=cfg.shots.filter(s=>s.team==k);return[a.length,a.filter(s=>s.ot||s.goal).length,a.reduce((x,s)=>x+s.xg,0)]};
-  const h=st('h'),a=st('a');g.globalAlpha=clamp((fin-.5)*2,0,1);
+  const h=st('h'),a=st('a');if(cfg.stats)['h','a'].forEach((k,n)=>(cfg.stats[k]||[]).forEach((v,i)=>{if(v!=null)(n?a:h)[i]=v}));g.globalAlpha=clamp((fin-.5)*2,0,1);
   [['Shots',h[0],a[0],270],['On target',h[1],a[1],540],['xG',h[2].toFixed(2),a[2].toFixed(2),810]].forEach(([l,x,y,cx])=>{txt(l,cx,CY+772,'400 20px Figtree','#c9c9d4','center');txt(String(x),cx-12,CY+815,'700 32px Figtree',cfg.home.color,'right');txt('–',cx,CY+815,'400 28px Figtree','#888','center');txt(String(y),cx+12,CY+815,'700 32px Figtree','#fff')});g.globalAlpha=1}
  // pressure chart
  txt('ATTACKING PRESSURE',60,CY+850,'600 16px Figtree','#9a9aa8');
@@ -144,10 +185,6 @@ function loop(ts){if(playing){T+=(ts-last)/1000;if(T>=D){if(recording){stopRec()
 requestAnimationFrame(loop);
 $('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play'};
 $('bar').oninput=e=>{T=e.target.value/1000*D;draw(T)};
-$('apply').onclick=()=>{try{load(JSON.parse($('js').value));$('st').textContent='Applied'}catch(e){$('st').textContent='JSON error: '+e.message}};
-$('reset').onclick=()=>load(demo());
-['brand','handle'].forEach(k=>$(k).oninput=e=>{cfg[k]=e.target.value;draw(T)});
-$('dur').onchange=e=>{cfg.duration=+e.target.value;D=cfg.duration;draw(T)};
 [['lh','h'],['la','a']].forEach(([id,k])=>$(id).onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{logos[k]=im;draw(T)};im.src=URL.createObjectURL(f)});
 
 let mr,chunks=[],mime='';
