@@ -29,14 +29,17 @@ textarea{flex:none;width:100%;height:84px;font:12px ui-monospace,monospace;resiz
 <div class="g2"><label>Competition<input id="title"></label><label>Round<input id="sub"></label><label>Date<input id="date"></label><label>Video length (seconds)<input id="dur" type="number" min="10" max="120"></label></div>
 <h2>3 · Momentum chart</h2>
 <label>Upload your chart screenshot (green bars above = home, blue below = away)<input type="file" id="chart" accept="image/*"></label><small id="cs">Demo momentum is loaded until you upload yours.</small>
-<h2>4 · Match events</h2>
+<h2>4 · Squads (optional)</h2>
+<small>Type each team's players, one per line. Then choosing a player in an event picks their team automatically.</small>
+<div class="g2"><label>Home players<textarea id="sqh"></textarea></label><label>Away players<textarea id="sqa"></textarea></label></div><datalist id="pl"></datalist>
+<h2>5 · Match events</h2>
 <small>Add each goal, card or missed penalty. Choose the minute, the team of the player, and the type.</small>
 <div id="ev"></div><div class="row"><button id="addev">+ Add event</button></div><small id="gw"></small>
-<h2>5 · Final stats (optional)</h2>
+<h2>6 · Final stats (optional)</h2>
 <div class="g2"><label>Shots – home<input id="sh" type="number"></label><label>Shots – away<input id="sa" type="number"></label>
 <label>On target – home<input id="oh" type="number"></label><label>On target – away<input id="oa" type="number"></label>
 <label>xG – home<input id="xh" type="number" step="0.01"></label><label>xG – away<input id="xa" type="number" step="0.01"></label></div>
-<h2>6 · Your branding</h2>
+<h2>7 · Your branding</h2>
 <div class="g2"><label>Brand name<input id="brand"></label><label>Handle<input id="handle"></label></div>
 <div class="row"><button id="reset">Reset to demo</button></div>
 <details><summary>Advanced: raw JSON data</summary><textarea id="js" spellcheck="false" style="height:200px"></textarea><button id="apply">Apply JSON</button></details>
@@ -67,6 +70,8 @@ function apply(c){cfg=c;D=+c.duration||45;
  cfg.shots.forEach((s,i)=>{const r=rng(i*97+5);if(s.u==null)s.u=s.team=='h'?.84+.13*r():.03+.13*r();if(s.v==null)s.v=.25+.5*r()});
  $('js').value=JSON.stringify(c).replace(/\},\{/g,'},\n{').replace(/"momentum":/,'\n"momentum":');draw(T)}
 function setForm(c){[['hs',c.home.short],['as',c.away.short],['hcol',c.home.color],['acol',c.away.color],['title',c.title],['sub',c.sub],['date',c.date],['dur',c.duration||45],['brand',c.brand],['handle',c.handle]].forEach(([i,v])=>$(i).value=v||'');
+ const SQ={h:new Set(),a:new Set()};c.shots.filter(s=>s.goal).forEach(s=>{const k=s.kind=='og'?(s.team=='h'?'a':'h'):s.team;if(s.scorer)SQ[k].add(s.scorer);if(s.assist)SQ[s.team].add(s.assist)});(c.cards||[]).forEach(q=>q.player&&SQ[q.team].add(q.player));
+ $('sqh').value=(c.squads?c.squads.h:[...SQ.h]).join('\n');$('sqa').value=(c.squads?c.squads.a:[...SQ.a]).join('\n');
  $('ev').innerHTML='';c.shots.filter(s=>s.goal).forEach(s=>addRow({min:s.min,team:s.kind=='og'?(s.team=='h'?'a':'h'):s.team,type:s.kind||'goal',player:s.scorer,assist:s.assist}));
  (c.cards||[]).forEach(k=>addRow({min:k.min,team:k.team,type:k.t=='r'?'red':k.t=='m'?'miss':'yellow',player:k.player}));
  const S=k=>{const a=c.shots.filter(s=>s.team==k),o=c.stats&&c.stats[k]||[];return[o[0]??a.length,o[1]??a.filter(s=>s.ot||s.goal).length,o[2]??+a.reduce((x,s)=>x+s.xg,0).toFixed(2)]};
@@ -78,7 +83,7 @@ function build(){const rows=[...document.querySelectorAll('#ev .ev')].map(r=>({m
  [['h','sh','oh','xh'],['a','sa','oa','xa']].forEach(([k,s,o,x])=>{const gl=goals.filter(q=>q.team==k),n=(num(s)??gl.length)-gl.length,xt=num(x),each=xt!=null&&n>0?Math.max(.02,(xt-gl.length*.35)/n):.1,on=num(o);
   for(let i=0;i<n;i++)shots.push({min:1+Math.floor(r()*89),team:k,xg:+Math.max(.02,each*(.6+.8*r())).toFixed(2),ot:on==null?r()<.5:i<Math.max(0,on-gl.length)})});
  shots.sort((a,b)=>a.min-b.min);
- return{title:V('title'),sub:V('sub'),date:V('date'),home:{short:V('hs'),color:$('hcol').value},away:{short:V('as'),color:$('acol').value},brand:V('brand'),handle:V('handle'),duration:num('dur')||45,cards,shots,momentum:MOM,stats:{h:[num('sh'),num('oh'),num('xh')],a:[num('sa'),num('oa'),num('xa')]}}}
+ return{title:V('title'),sub:V('sub'),date:V('date'),home:{short:V('hs'),color:$('hcol').value},away:{short:V('as'),color:$('acol').value},brand:V('brand'),handle:V('handle'),duration:num('dur')||45,cards,shots,momentum:MOM,squads:{h:V('sqh').split('\n').map(s=>s.trim()).filter(Boolean),a:V('sqa').split('\n').map(s=>s.trim()).filter(Boolean)},stats:{h:[num('sh'),num('oh'),num('xh')],a:[num('sa'),num('oa'),num('xa')]}}}
 function load(c){MOM=c.momentum.slice();setForm(c);apply(c)}
 function readChart(im){const c=document.createElement('canvas'),w=c.width=im.width,h=c.height=im.height,x=c.getContext('2d');x.drawImage(im,0,0);const d=x.getImageData(0,0,w,h).data,px=(i,j)=>{const o=(j*w+i)*4;return[d[o],d[o+1],d[o+2]]};
  const isG=(i,j)=>{const[r,g,b]=px(i,j);return g>110&&g>r*1.4&&g>b*1.4},isB=(i,j)=>{const[r,g,b]=px(i,j);return b>130&&b>g*1.35&&r<b*.85};
@@ -92,7 +97,7 @@ function readChart(im){const c=document.createElement('canvas'),w=c.width=im.wid
  [[xl,xm-2],[xm+2,xr+1]].forEach(([a,b])=>{for(let k=0;k<45;k++){const s=a+(b-a)*k/45,e=a+(b-a)*(k+1)/45;let g2=0,b2=0;for(let i=Math.floor(s);i<Math.max(Math.ceil(e),Math.floor(s)+1);i++){g2=Math.max(g2,gh[i]||0);b2=Math.max(b2,bh[i]||0)}raw.push(g2>=b2?g2:-b2)}});
  const mx=Math.max(...raw.map(Math.abs));if(!mx)throw Error('no bars found');return raw.map(v=>+(v/mx).toFixed(2))}
 $('chart').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{try{MOM=readChart(im);$('cs').textContent='Chart read ✓ – check the pressure strip in the preview matches your picture.';apply(build())}catch(err){$('cs').textContent='Could not read this chart: '+err.message}};im.src=URL.createObjectURL(f)};
-const ch=e=>{if(e.target.id=='js'||e.target.type=='file')return;syncOpts();clearTimeout(tm);tm=setTimeout(()=>{apply(build());chk()},250)};
+const ch=e=>{if(e.target.id=='js'||e.target.type=='file')return;if(e.target.classList&&e.target.classList.contains('p')){const k=sq()[e.target.value.trim().toLowerCase()];if(k)e.target.parentNode.querySelector('.t').value=k}syncOpts();clearTimeout(tm);tm=setTimeout(()=>{apply(build());chk()},250)};
 $('side').addEventListener('input',ch);$('side').addEventListener('change',ch);
 $('addev').onclick=()=>{addRow({min:Math.max(1,Math.min(90,Math.round(T/(D-3)*90)))});ch({target:{}})};
 $('ev').onclick=e=>{if(e.target.classList.contains('x')){e.target.parentNode.remove();ch({target:{}})}};
@@ -100,10 +105,12 @@ $('apply').onclick=()=>{try{load(JSON.parse($('js').value));$('st').textContent=
 $('reset').onclick=()=>load(demo());
 $('ft').onclick=()=>{playing=false;$('play').textContent='Play';T=D;draw(D)};
 $('png').onclick=()=>cv.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='match-frame.png';a.click()});
-function chk(){const n=a=>cfg.shots.filter(s=>s.goal&&s.team==a).length,bad=[...document.querySelectorAll('#ev .m')].filter(i=>!(+i.value>0)).length;$('gw').textContent=cfg.shots.filter(s=>s.goal).length+' goal(s): '+cfg.home.short+' '+n('h')+' – '+n('a')+' '+cfg.away.short+(bad?'  ⚠ '+bad+' event(s) need a minute':'')}
-function syncOpts(){document.querySelectorAll('#ev .ev').forEach(r=>{const o=r.querySelector('.t').options;o[0].textContent=V('hs')||'Home';o[1].textContent=V('as')||'Away';r.querySelector('.s').disabled=r.querySelector('.k').value!='goal'})}
+function chk(){const n=a=>cfg.shots.filter(s=>s.goal&&s.team==a).length,M=sq(),mis=[...document.querySelectorAll('#ev .ev')].filter(r=>{const k=M[r.querySelector('.p').value.trim().toLowerCase()];return k&&k!=r.querySelector('.t').value}).length,bad=[...document.querySelectorAll('#ev .m')].filter(i=>!(+i.value>0)).length;$('gw').textContent=cfg.shots.filter(s=>s.goal).length+' goal(s): '+cfg.home.short+' '+n('h')+' – '+n('a')+' '+cfg.away.short+(bad?'  ⚠ '+bad+' event(s) need a minute':'')+(mis?'  ⚠ '+mis+' player(s) are listed in the other team\'s squad':'')}
+function syncOpts(){document.querySelectorAll('#ev .ev').forEach(r=>{const o=r.querySelector('.t').options;o[0].textContent=V('hs')||'Home';o[1].textContent=V('as')||'Away';r.querySelector('.s').disabled=r.querySelector('.k').value!='goal';r.style.borderLeft='5px solid '+(r.querySelector('.t').value=='h'?$('hcol').value:$('acol').value)});
+ const nm=[...new Set(V('sqh').split('\n').concat(V('sqa').split('\n')).map(s=>s.trim()).filter(Boolean))];$('pl').replaceChildren(...nm.map(n=>{const o=document.createElement('option');o.value=n;return o}))}
+const sq=()=>{const m={};[['sqh','h'],['sqa','a']].forEach(([id,k])=>V(id).split('\n').map(s=>s.trim()).filter(Boolean).forEach(n=>m[n.toLowerCase()]=k));return m};
 function addRow(e={}){const d=document.createElement('div');d.className='ev';
- d.innerHTML='<input class="m" type="number" min="1" max="90" placeholder="Min"><select class="t"><option value="h"></option><option value="a"></option></select><select class="k"><option value="goal">Goal</option><option value="pen">Penalty goal</option><option value="og">Own goal</option><option value="yellow">Yellow card</option><option value="red">Red card</option><option value="miss">Missed penalty</option></select><input class="p" placeholder="Player"><input class="s" placeholder="Assist (optional)"><button class="x" title="Remove">✕</button>';
+ d.innerHTML='<input class="m" type="number" min="1" max="90" placeholder="Min"><select class="t"><option value="h"></option><option value="a"></option></select><select class="k"><option value="goal">Goal</option><option value="pen">Penalty goal</option><option value="og">Own goal</option><option value="yellow">Yellow card</option><option value="red">Red card</option><option value="miss">Missed penalty</option></select><input class="p" list="pl" placeholder="Player"><input class="s" placeholder="Assist (optional)"><button class="x" title="Remove">✕</button>';
  d.querySelector('.m').value=e.min??'';d.querySelector('.t').value=e.team||'h';d.querySelector('.k').value=e.type||'goal';d.querySelector('.p').value=e.player||'';d.querySelector('.s').value=e.assist||'';
  $('ev').appendChild(d);syncOpts()}
 
@@ -140,9 +147,10 @@ function draw(t){
  g.fillStyle=bg;g.fillRect(0,CY,W,1080);
  const hc=hexRGB(cfg.home.color),ac=hexRGB(cfg.away.color);
  // goal flash
- let banner=null;const BE=cfg.shots.filter(s=>s.goal).map(s=>({min:s.min,team:s.team,label:s.kind=='pen'?'Penalty goal':s.kind=='og'?'Own goal':'Goal',name:s.scorer,sub:s.assist?'Assist · '+s.assist:''})).concat((cfg.cards||[]).filter(c=>c.t=='r'||c.t=='m').map(c=>({min:c.min,team:c.team,label:c.t=='r'?'Red card':'Penalty missed',name:c.player,sub:'',red:true})));
+ let banner=null;const cd=k=>cfg[k=='h'?'home':'away'].short,fl=k=>k=='h'?'a':'h';
+ const BE=cfg.shots.filter(s=>s.goal).map(s=>{const og=s.kind=='og';return{min:s.min,pk:og?fl(s.team):s.team,label:s.kind=='pen'?'Penalty goal':og?'Own goal':'Goal',name:s.scorer,sub:og?'Counts for '+cd(s.team):[s.assist?'Assist · '+s.assist:'','vs '+cd(fl(s.team))].filter(Boolean).join('  ·  ')}}).concat((cfg.cards||[]).filter(c=>c.t=='r'||c.t=='m').map(c=>({min:c.min,pk:c.team,label:c.t=='r'?'Red card':'Penalty missed',name:c.player,sub:'vs '+cd(fl(c.team)),red:true})));
  BE.forEach(s=>{const a=t-s.min/90*(D-3);if(a>=0&&a<2.4&&!isFT)banner={s,a}});
- if(banner){const c=banner.s.red?[229,55,46]:hexRGB(banner.s.team=='h'?cfg.home.color:cfg.away.color);g.fillStyle=`rgba(${c},${.13*Math.max(0,1-banner.a/1.2)})`;g.fillRect(0,CY,W,1080)}
+ if(banner){const c=banner.s.red?[229,55,46]:hexRGB(banner.s.pk=='h'?cfg.home.color:cfg.away.color);g.fillStyle=`rgba(${c},${.13*Math.max(0,1-banner.a/1.2)})`;g.fillRect(0,CY,W,1080)}
  const{Z,front,sp}=surface(m,fin);
  // shadow plane
  g.fillStyle='rgba(0,0,0,.65)';g.beginPath();[[0,0],[1,0],[1,1],[0,1]].forEach(([u,v],k)=>{const p=P(u,v,-16);k?g.lineTo(...p):g.moveTo(...p)});g.fill();
@@ -171,7 +179,7 @@ function draw(t){
  const n10=cfg.shots.filter(s=>s.min<=m&&s.min>m-10).length;
  if(!isFT&&n10>=3)txt(n10+' SHOTS IN THE LAST 10 MINUTES',1020,CY+782,'700 17px Figtree',n10>=5?'#ff5b4d':'#e8e8ee','right');
  if(banner){const a=banner.a,al=a<.3?a/.3:a>2?(2.4-a)/.4:1,s=banner.s;g.globalAlpha=clamp(al,0,1);
-  txt(s.label,1020,CY+668,'600 18px Figtree','#9a9aa8','right');txt(s.name||s.label,1020,CY+712,'44px Anton','#fff','right');if(s.sub)txt(s.sub,1020,CY+745,'400 20px Figtree','#9a9aa8','right');g.globalAlpha=1}
+  crest(s.pk,972,CY+670,48);txt(s.label+' · '+cd(s.pk),960,CY+668,'700 18px Figtree',cfg[s.pk=='h'?'home':'away'].color,'right');txt(s.name||s.label,960,CY+712,'44px Anton','#fff','right');if(s.sub)txt(s.sub,960,CY+745,'400 20px Figtree','#9a9aa8','right');g.globalAlpha=1}
  // stats at FT
  const ax=CY+880;
  if(isFT&&fin>.5){const st=k=>{const a=cfg.shots.filter(s=>s.team==k);return[a.length,a.filter(s=>s.ot||s.goal).length,a.reduce((x,s)=>x+s.xg,0)]};
